@@ -32,7 +32,7 @@ def _fetch_broker() -> list[dict]:
         headers=IDX_HEADERS,
         params={"start": 0, "length": 500},
         timeout=15,
-        impersonate="chrome120",
+        impersonate="firefox133",
     )
     response.raise_for_status()
     return response.json()["data"]

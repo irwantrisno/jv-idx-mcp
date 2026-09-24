@@ -33,7 +33,7 @@ def _fetch_profile(code: str) -> Optional[dict]:
         headers=IDX_HEADERS,
         params={"KodeEmiten": code, "language": "id-id"},
         timeout=15,
-        impersonate="chrome120",
+        impersonate="firefox133",
     )
     response.raise_for_status()
     return response.json()

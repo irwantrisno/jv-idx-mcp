@@ -4,7 +4,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         gcc g++ make wget ca-certificates \
     && wget -q https://sourceforge.net/projects/ta-lib/files/ta-lib/0.4.0/ta-lib-0.4.0-src.tar.gz \
     && tar -xzf ta-lib-0.4.0-src.tar.gz \
-    && cd ta-lib && ./configure --prefix=/usr && make -j"$(nproc)" && make install \
+    && cd ta-lib && ./configure --prefix=/usr && make -j1 && make install \
     && cd / && rm -rf ta-lib ta-lib-0.4.0-src.tar.gz /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -13,7 +13,8 @@ ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
 
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project
+RUN uv sync --frozen --no-dev --no-install-project \
+    && uv pip install "numpy<2.4.0"
 
 COPY server.py ./
 COPY tools/ ./tools/

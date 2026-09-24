@@ -8,9 +8,5 @@ services:
     restart: unless-stopped
     environment:
       - MCP_API_KEY=${MCP_API_KEY:-}
-    networks:
-      - proxy
-
-networks:
-  proxy:
-    external: true
+    ports:
+      - "8000:8000"
