@@ -6,6 +6,23 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
+    
+    # ─── Resource limits (OOM prevention — 2026-09-26) ───
+    # Mac mini 7.5 GB RAM total. Container max 5 GB, sisakan 2.5 GB untuk host.
+    # Swap maksimal 1 GB tambahan (total max 6 GB).
+    mem_limit: 5g
+    mem_reservation: 3g
+    memswap_limit: 6g
+    cpus: 2.0
+    
+    # ─── Healthcheck ───
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c '</dev/tcp/localhost/8000' && exit 0 || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    
     environment:
       - MCP_API_KEY=${MCP_API_KEY:-}
     ports:
