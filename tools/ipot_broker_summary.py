@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import json
 import re
+import logging
 import sqlite3
 import threading
 import time
@@ -61,6 +62,18 @@ from bs4 import BeautifulSoup
 # ─── Cache setup ───
 _CACHE_DB = Path(__file__).parent.parent / ".cache" / "mcp_cache.db"
 _CACHE_LOCK = threading.Lock()
+
+# ─── Logger ───
+logger = logging.getLogger(__name__)
+
+# ─── HTTP client (reuse, connection pooling) ───
+_HTTP_CLIENT = httpx.Client(
+    timeout=15,
+    headers={
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/133.0',
+    },
+    follow_redirects=True,
+)
 
 
 def _init_cache_db():
@@ -94,14 +107,15 @@ def _get_cache(key):
             return None
         data, fetched_at, ttl = row
         if time.time() - fetched_at > ttl:
-            return None  # Expired
-        # Increment hit count (non-blocking)
+            logger.info(f"CACHE EXPIRED: {key}")
+            return None
         try:
             with sqlite3.connect(_CACHE_DB, timeout=2) as conn:
                 conn.execute("UPDATE cache SET hit_count = hit_count + 1 WHERE key = ?", (key,))
                 conn.commit()
         except Exception:
             pass
+        logger.info(f"CACHE HIT: {key}")
         return json.loads(data)
     except Exception:
         return None
@@ -156,7 +170,7 @@ def fetch_broker_summary_cached(
     if cached is not None:
         return cached
     
-    # Cache miss → fetch fresh
+    logger.info(f"CACHE MISS: {key}")
     data = fetch_broker_summary(code, start, end, fd, board)
     
     ttl = _calc_ttl(start)
@@ -444,7 +458,7 @@ def fetch_broker_summary(
         "board": board,
     }
 
-    response = httpx.get(BASE_URL, params=params, timeout=15)
+    response = _HTTP_CLIENT.get(BASE_URL, params=params)
     response.raise_for_status()
 
     soup = BeautifulSoup(response.text, "html.parser")
