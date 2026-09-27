@@ -49,10 +49,120 @@ from __future__ import annotations
 
 import json
 import re
+import sqlite3
+import threading
+import time
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import httpx
 from bs4 import BeautifulSoup
+
+# ─── Cache setup ───
+_CACHE_DB = Path(__file__).parent.parent / ".cache" / "mcp_cache.db"
+_CACHE_LOCK = threading.Lock()
+
+
+def _init_cache_db():
+    """Init SQLite cache table."""
+    _CACHE_DB.parent.mkdir(parents=True, exist_ok=True)
+    with _CACHE_LOCK:
+        with sqlite3.connect(_CACHE_DB, timeout=10) as conn:
+            conn.execute("PRAGMA journal_mode=WAL")  # Concurrency
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS cache (
+                    key TEXT PRIMARY KEY,
+                    data TEXT,
+                    fetched_at REAL,
+                    ttl INTEGER,
+                    hit_count INTEGER DEFAULT 0
+                )
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_fetched ON cache(fetched_at)")
+            conn.commit()
+
+
+def _get_cache(key):
+    """Return cached data or None."""
+    try:
+        with sqlite3.connect(_CACHE_DB, timeout=5) as conn:
+            row = conn.execute(
+                "SELECT data, fetched_at, ttl FROM cache WHERE key = ?",
+                (key,)
+            ).fetchone()
+        if not row:
+            return None
+        data, fetched_at, ttl = row
+        if time.time() - fetched_at > ttl:
+            return None  # Expired
+        # Increment hit count (non-blocking)
+        try:
+            with sqlite3.connect(_CACHE_DB, timeout=2) as conn:
+                conn.execute("UPDATE cache SET hit_count = hit_count + 1 WHERE key = ?", (key,))
+                conn.commit()
+        except Exception:
+            pass
+        return json.loads(data)
+    except Exception:
+        return None
+
+
+def _set_cache(key, data, ttl):
+    """Save data to cache."""
+    try:
+        with sqlite3.connect(_CACHE_DB, timeout=5) as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO cache (key, data, fetched_at, ttl, hit_count) "
+                "VALUES (?, ?, ?, ?, COALESCE((SELECT hit_count FROM cache WHERE key = ?), 0))",
+                (key, json.dumps(data), time.time(), ttl, key)
+            )
+            conn.commit()
+    except Exception as e:
+        pass  # Silent fail — cache opsional
+
+
+def _calc_ttl(start_date_str):
+    """TTL based on data age."""
+    for fmt in ('%m/%d/%Y', '%Y-%m-%d'):
+        try:
+            dt = datetime.strptime(start_date_str, fmt)
+            days_ago = (datetime.now() - dt).days
+            if days_ago > 7:
+                return 7 * 86400      # Historical: 7 hari
+            elif days_ago > 1:
+                return 86400          # Recent: 1 hari
+            else:
+                return 3600           # Hari ini: 1 jam
+        except ValueError:
+            continue
+    return 86400  # Default
+
+
+# Init cache saat import
+_init_cache_db()
+
+
+def fetch_broker_summary_cached(
+    code: str,
+    start: str,
+    end: str,
+    fd: str = "all",
+    board: str = "all",
+) -> dict:
+    """Wrapper dengan cache."""
+    key = f"broker_summary:{code.upper()}:{start}:{end}:{fd}:{board}"
+    
+    cached = _get_cache(key)
+    if cached is not None:
+        return cached
+    
+    # Cache miss → fetch fresh
+    data = fetch_broker_summary(code, start, end, fd, board)
+    
+    ttl = _calc_ttl(start)
+    _set_cache(key, data, ttl)
+    
+    return data
 
 BASE_URL = "https://www.indopremier.com/module/saham/include/data-brokersummary.php"
 

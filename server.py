@@ -33,6 +33,7 @@ from tools.idx_profile import get_profile
 from tools.ipot_fundamental import _to_csv, _to_str, fetch_fundamental
 from tools.ipot_broker_summary import (
     fetch_broker_summary,
+    fetch_broker_summary_cached,
     fetch_broker_flow,
     fetch_broker_flow_cumulative,
 )
@@ -230,7 +231,7 @@ def get_broker_summary(
     """
     ticker = code.strip().upper()
     try:
-        result = fetch_broker_summary(ticker, start=start, end=end, fd=fd, board=board)
+        result = fetch_broker_summary_cached(ticker, start=start, end=end, fd=fd, board=board)
     except ValueError as e:
         raise ValueError(f"Invalid request for '{ticker}': {e}") from e
     except httpx.HTTPStatusError as e:

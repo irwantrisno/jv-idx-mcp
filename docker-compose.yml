@@ -23,6 +23,10 @@ services:
       retries: 3
       start_period: 30s
     
+    # ─── Persist cache across rebuilds ───
+    volumes:
+      - ./cache:/app/.cache
+    
     environment:
       - MCP_API_KEY=${MCP_API_KEY:-}
     ports:
